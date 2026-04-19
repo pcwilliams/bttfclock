@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Time Circuits — Build Tutorial</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+:root {
+  --bg: #0b0b0a;
+  --panel: #17171a;
+  --panel-2: #1f1f22;
+  --text: #e9e9e4;
+  --muted: #a0a096;
+  --accent: #ffb300;
+  --border: #2a2a2e;
+  --prompt-bg: #171f17;
+  --prompt-border: #34ff5a;
+  --ref-bg: #1f1712;
+  --ref-border: #ffb300;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.container { max-width: 820px; margin: 0 auto; padding: 40px 20px 80px; }
+.hero { text-align: center; margin-bottom: 24px; }
+.hero h1 {
+  font-size: 36px; letter-spacing: 2px; margin: 12px 0 4px;
+  font-weight: 900; text-transform: uppercase;
+}
+.hero p { color: var(--muted); margin: 0; font-size: 14px; }
+.phone-frame {
+  margin: 30px auto 40px; width: 260px; padding: 8px;
+  background: #000; border-radius: 40px;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.55), 0 0 0 2px #2a2a2a;
+}
+.phone-frame img { width: 100%; border-radius: 32px; display: block; }
+h2 { border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  margin-top: 48px; font-size: 22px; letter-spacing: 0.5px; }
+h3 { color: var(--accent); margin-top: 30px; font-size: 16px; }
+.prompt {
+  background: var(--prompt-bg); border-left: 3px solid var(--prompt-border);
+  padding: 14px 18px; margin: 14px 0 18px;
+  border-radius: 0 8px 8px 0; font-style: italic;
+}
+.prompt .who { font-style: normal; color: var(--prompt-border);
+  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  display: block; margin-bottom: 6px; }
+.reference {
+  background: var(--ref-bg); border-left: 3px solid var(--ref-border);
+  padding: 14px 18px; margin: 14px 0 18px;
+  border-radius: 0 8px 8px 0;
+}
+.reference .who { color: var(--ref-border);
+  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  display: block; margin-bottom: 6px; }
+p { color: var(--muted); line-height: 1.6; }
+ul { color: var(--muted); line-height: 1.7; }
+code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+  color: var(--text); }
+pre { background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; overflow-x: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+  color: var(--text); }
+footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 60px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="hero">
+    <h1>Building Time Circuits</h1>
+    <p>How this BTTF-styled clock came together — iterated to screen accuracy on iPhone, ported to native macOS, then stripped to a chromeless aspect-matched Mac window with its settings in the menu — through Claude Code conversation</p>
+  </div>
+
+  <div class="phone-frame">
+    <img src="bttfclock.png" alt="Final app screenshot" />
+  </div>
+
+  <h2>The pitch</h2>
+  <div class="prompt">
+    <span class="who">Prompt</span>
+    I just want a clock that tells me the time and date. But I want it to look
+    as close as possible to the time display in the Back to the Future DeLorean!
+    We'll use the same idea to show the time in a few timezones — London,
+    New York, and Hong Kong (a configurable, persisted list with an easy
+    UI in a settings pane).
+  </div>
+
+  <p>Claude opened with clarifying questions rather than jumping in: three
+  fixed colour rows or floating labels? Max city count? Seconds or not?
+  How authentic on the enclosure? Five quick answers later — city labels
+  in silk-screen style, cap at three cities, no seconds, full-on
+  dashboard, curated list with reorder — and the design brief was set.</p>
+
+  <h2>V1 — first cut</h2>
+
+  <p>Claude studied a sibling project (<code>Spectrum</code>) to mirror
+  its conventions: hand-written <code>project.pbxproj</code> with 24-char
+  hex IDs, <code>PBXFileSystemSynchronizedRootGroup</code> for the test
+  target, manual file registration for app sources.</p>
+
+  <p>The first build had three coloured rows inside a single big metal
+  enclosure, with white silk-screen city labels above each row. LED
+  segments were drawn from scratch as SwiftUI <code>Shape</code>s —
+  7-segment for digits, 14-segment for month letters, with a beveled
+  chamfer on each bar, an italic x-shear, and a three-layer glow stack.</p>
+
+  <h2>V2 — the reference photo</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Looks amazing… but not entirely accurate. Can you see the
+    Time_Circuits_BTTF.webp I just added in this folder?
+  </div>
+
+  <p>The screen-used prop photo revealed several mismatches:</p>
+
+  <ul>
+    <li>Month letters weren't coloured — in my first pass they were
+    white; the user later clarified that the prop has month segments in
+    the row colour like the digits.</li>
+    <li>Each field (MONTH, DAY, YEAR, HOUR, MIN) had its own recessed
+    black window, not one wide display.</li>
+    <li>Captions were <strong>white on red rectangles</strong> — DYMO
+    tape style, not silk-screen.</li>
+    <li>Each of the three rows was its own grey brushed-metal tile on a
+    darker chassis, not one big panel.</li>
+    <li>AM/PM sits <em>between</em> YEAR and HOUR in the original, not
+    after MIN.</li>
+  </ul>
+
+  <p>A handful of iteration cycles followed — refactoring
+  <code>TimeCircuitRowView</code> into per-field black windows, adding a
+  <code>RowPanel</code> component with its own brushed-metal background,
+  moving the city label below the display on a black plate.</p>
+
+  <h2>V3 — the A in APR</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Getting very close! The A in APR seems distorted.
+  </div>
+
+  <p>Claude audited the 14-segment mask table and caught two wrong
+  entries: <code>A</code> had spurious H + I bits (extra diagonals
+  appearing where there shouldn't be any), and <code>S</code> had an
+  unused H bit with G1 missing. Both were bitmask typos from the
+  initial write-up. <code>V</code> was also using the wrong pair of
+  segments for the wedge shape; swapped to the standard DSEG14
+  convention.</p>
+
+  <pre>"A": 0b0000_0000_1111_0111  // A B C E F G1 G2   (was 0x0377)
+"S": 0b0000_0000_1110_1101  // A C D F G1 G2     (was 0x018D)
+"V": 0b0010_1000_0010_0010  // B F K M           (was E F J M)</pre>
+
+  <h2>V4 — AM/PM, row panels, and softer glow</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    No black background behind AM/PM. A horizontal black line between each
+    clock — each clock is basically its own textured grey surface. And
+    still more spacing between the LED digits.
+  </div>
+
+  <p>Out went the AM/PM black window; in came three separate
+  <code>RowPanel</code>s on a darker <code>DashboardEnclosureView</code>
+  chassis. The user asked for a time-ordered default
+  (New York → London → Hong Kong) so hours roll top-to-bottom, and for
+  the AM/PM text to move <strong>above</strong> each lamp rather than
+  beside it — freeing horizontal space for wider digit spacing.</p>
+
+  <p>The label fonts were toned down twice: first expanded for an
+  old-DYMO-tape feel (<code>.width(.expanded)</code>), then greyed
+  (<code>#C7C7BF</code>) to match the slightly worn off-white of the
+  prop's silk-screen.</p>
+
+  <h2>V5 — the pulsing colon</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Note the bold <code>:</code> between HH and MM, in the matching
+    colour. It probably flashes per second too.
+  </div>
+
+  <p>First pass: a <code>withAnimation(.easeInOut(duration: 0.5)
+  .repeatForever(autoreverses: true))</code> animating a
+  <code>@State</code> level — giving a 1-second cycle. Then:</p>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Is the flashing on an exact 1 second cycle?
+  </div>
+
+  <p>Yes — but the animation starts on <code>onAppear</code>, so its
+  phase drifts from wall-clock seconds depending on when the app was
+  launched. The user asked to drive it from the real clock.</p>
+
+  <p>Solution: a <code>TimelineView(.animation)</code> that redraws ~60
+  times per second, passing <code>context.date</code> into a pure
+  function:</p>
+
+  <pre>static func level(at date: Date, dim: Double, half: Double) -&gt; Double {
+    let t = date.timeIntervalSince1970
+    let phase = t - floor(t)                      // 0..&lt;1
+    let wave  = 0.5 + 0.5 * cos(2 * .pi * phase)  // 1 at boundary
+    return dim + (half - dim) * wave              // 0.25 ↔ 0.55
+}</pre>
+
+  <p>The pulse now peaks exactly at every whole wall-clock second —
+  <code>:00</code>, <code>:01</code>, <code>:02</code> — and troughs at
+  each half-second. Four new unit tests (<code>ColonPulseTests</code>)
+  cover peak-at-boundary, trough-at-half, mid-rise, and range bounds.</p>
+
+  <h2>Launch-argument testability</h2>
+
+  <p>Three flags, parsed once in <code>ContentView.onAppear</code>,
+  override persisted state so every visual variation is reachable from
+  the CLI — no AppleScript required:</p>
+
+  <pre>xcrun simctl launch "iPhone 16" com.pwilliams.bttfclock \
+    -frozendate "1985-10-26T01:21:00-07:00" \
+    -cities london,new_york,hong_kong</pre>
+
+  <p>With a frozen date the <code>ClockViewModel</code>'s
+  <code>Timer</code> never starts, so every screenshot is byte-stable.
+  The colon keeps pulsing regardless because its
+  <code>TimelineView</code> uses the live system <code>Date</code>, not
+  the view model's frozen instant. 35 Swift Testing cases cover
+  segment bitmasks, timezone math, persistence round-trips, colon-pulse
+  maths, and the launch-arg plumbing.</p>
+
+  <h2>Icons</h2>
+
+  <p>A ~100-line Python/Pillow script renders three 1024×1024 variants
+  — standard, dark, tinted — drawing the brushed metal background,
+  three colour-gelled windows, and four corner rivets. The
+  <code>Contents.json</code> uses <code>luminosity</code> appearance
+  variants to hook into iOS 18's tinted home-screen mode.</p>
+
+  <h2>V6 — Mac Catalyst, then native macOS</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Is it possible to build and deploy the same app for macOS too?
+    I'd love to run it on my desktop.
+  </div>
+
+  <p>Two options on the table: Mac Catalyst (flip one flag, run the iOS
+  binary in a Mac window) or a native macOS target (wrap iOS-only
+  modifiers in <code>#if os(macOS)</code>). We went with Catalyst first
+  as a stepping stone — literally three settings in the pbxproj:</p>
+
+  <pre>SUPPORTS_MACCATALYST = YES
+SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO
+TARGETED_DEVICE_FAMILY = "1,2"
+SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx"</pre>
+
+  <p>First run on Mac: it built and launched, but the content was sized
+  for a portrait iPhone — tiny and centred in a wide Mac window. The
+  fix was to make each row scale as a unit preserving its aspect ratio.
+  A single <code>scaleEffect</code> on the whole enclosure broke the
+  pane feel; what worked was per-row scaling using
+  <code>.aspectRatio(nat.w / nat.h, contentMode: .fit)</code> around a
+  <code>GeometryReader + .fixedSize() + .scaleEffect</code>:</p>
+
+  <pre>GeometryReader { geo in
+    let scale = min(geo.size.width / nat.width, geo.size.height / nat.height)
+    VStack(spacing: 3) {
+        displayRow.frame(width: nat.width, height: rowHeight)
+        cityPlate
+    }
+    .fixedSize()
+    .scaleEffect(scale, anchor: .center)
+    .frame(width: geo.size.width, height: geo.size.height)
+}
+.aspectRatio(nat.width / nat.height, contentMode: .fit)</pre>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Native macOS target please.
+  </div>
+
+  <p>The jump from Catalyst to truly native was surprisingly small — one
+  pbxproj flip (<code>SUPPORTS_MACCATALYST = NO</code>,
+  <code>MACOSX_DEPLOYMENT_TARGET = 14.0</code>,
+  <code>LSApplicationCategoryType = public.app-category.utilities</code>)
+  and three tiny view-modifier shims in <code>SettingsView.swift</code>
+  to hide the iOS-only <code>EditMode</code>,
+  <code>.navigationBarTitleDisplayMode</code>, and the
+  <code>.navigationBarDrawer</code> search placement:</p>
+
+  <pre>private extension View {
+    @ViewBuilder
+    func inlineNavigationTitle() -> some View {
+        #if os(iOS)
+        self.navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
+    }
+    // ... similar for platformSearchable(text:) and forceEditModeActive()
+}</pre>
+
+  <p>The result: one multiplatform target, one binary, zero
+  <code>#if</code> in any other source file. <code>BttfclockApp</code>
+  got a <code>.defaultSize(760×680)</code> on macOS so the window
+  opens at a size that fits all three rows. First screenshot showed
+  the top row cut off and city labels way too big — turned out the
+  enclosure was growing to ~900pt and scaling the labels 2.5×.
+  Dropping <code>maxWidth</code> to 700 and shrinking the city plate
+  (font 14→11, height 24→18) fixed both issues at once.</p>
+
+  <h2>V7 — the colon tick, revisited</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    The flashing colon doesn't look quite right — I think the dots
+    need to be smaller, like the LEDs for AM/PM. Same colour as those
+    at brightest point, switching not fading to half brightness so as
+    to show the seconds ticking but subtly.
+  </div>
+
+  <p>The smooth cosine pulse was replaced by a step function — no fade,
+  just an instant toggle at each half-second boundary:</p>
+
+  <pre>static func isLit(at date: Date) -&gt; Bool {
+    let t = date.timeIntervalSince1970
+    let phase = t - floor(t)
+    return phase &lt; 0.5
+}</pre>
+
+  <p>The dot itself was rewritten to share its visual treatment with
+  the AM/PM lamps — a 5pt circle, <code>color.lit</code> fill, the
+  same two bloom shadows, and a white-cored radial-gradient hot-spot
+  that reads as the filament of a real LED through frosted plastic.
+  The ghost circle stays underneath when unlit, so the tick reads as
+  subtle rather than a hard flash. Four existing unit tests were
+  replaced with step-function equivalents: lit on second boundary,
+  lit through first half, unlit through second half, and toggles at
+  <code>±0.5</code>.</p>
+
+  <h2>Cleanup pass</h2>
+
+  <p>With the feature work settled, a cleanup pass removed dead code
+  (unused <code>SevenSegmentNumber</code>, <code>FourteenSegmentWord</code>,
+  the <code>litCoreOverride</code> parameter left over from the
+  white-month-letters experiment, <code>RowColor.captionColor</code>),
+  extracted the duplicated plate colours into a shared
+  <code>Palette</code> enum, gathered the layout constants in
+  <code>TimeCircuitRowView</code> under <code>// MARK:</code> sections,
+  and added <code>///</code> doc comments on every type and non-obvious
+  function — explaining <em>why</em> each piece exists (design
+  decisions, prop-accuracy rationale, invariants) rather than
+  restating <em>what</em> the code does.</p>
+
+  <h2>V8 — chromeless Mac, settings in the menu</h2>
+
+  <div class="reference">
+    <span class="who">User</span>
+    For the MacOS version, I think we want as little border as possible
+    around the clock panels. Let's make the aspect ratio of the app fit
+    the clock panels, and move the settings elsewhere — maybe just into
+    the menu?
+  </div>
+
+  <p>The original Mac window opened at 760×680 with a centred enclosure,
+  a 14pt horizontal inset, a 700pt <code>maxWidth</code> cap, and a
+  "CITIES" gear button below — borrowed directly from the iOS layout.
+  On iPhone all of that makes sense; on a Mac it just wastes pixels.
+  Three changes got the Mac version to a tight, aspect-matched
+  window:</p>
+
+  <ul>
+    <li><strong>Tighter padding on macOS.</strong>
+      <code>DashboardEnclosureView</code> and <code>RowPanel</code>
+      both got <code>#if os(macOS)</code> blocks that swap in smaller
+      padding values (2h/3v chassis, 4h/3v panel content, 3pt row
+      spacing) and drop the <code>.fixedSize(vertical:)</code> so the
+      enclosure fills the window vertically.</li>
+    <li><strong>Aspect-matched window.</strong> The natural row aspect
+      is ~5.04:1, and three of them stacked with minimal padding work
+      out to ~1.55:1 overall.
+      <code>.defaultSize(width: 520, height: 335)</code> on the
+      <code>WindowGroup</code> matches that exactly, so the enclosure
+      fills the window edge-to-edge with no letterboxing.
+      <code>ContentView</code> was split into a
+      <code>#if os(macOS)</code> body that drops the
+      <code>maxWidth: 700</code> cap and uses
+      <code>.frame(maxWidth: .infinity, maxHeight: .infinity)</code>.</li>
+    <li><strong>Settings in the menu, not a button.</strong> The gear
+      button is now iOS-only. On macOS, a
+      <code>CommandGroup(replacing: .appSettings)</code> binds
+      <code>⌘,</code> to opening the settings sheet. Because the
+      <code>.commands</code> block lives on the Scene and can't reach
+      <code>ContentView</code>'s private state,
+      <code>showSettings</code> was hoisted to
+      <code>BttfclockApp</code>'s <code>@State</code> and passed down
+      as a <code>@Binding</code> — the sheet still presents from
+      <code>ContentView</code> on both platforms, but now either the
+      gear button (iOS) or the menu (macOS) can flip the flag.</li>
+  </ul>
+
+  <p>The settings sheet itself needed one more macOS tweak: without
+  explicit sizing, the modal shrank to the <code>List</code>'s minimum
+  intrinsic size and rendered just a handful of collapsed rows.
+  Adding
+  <code>.frame(minWidth: 420, idealWidth: 460, minHeight: 480,
+  idealHeight: 540)</code> inside a <code>#if os(macOS)</code> block on
+  the <code>NavigationStack</code> gave it a comfortable default
+  size.</p>
+
+  <div class="reference">
+    <span class="who">User</span>
+    Please write a script that builds a release version, and installs
+    it in Applications, and run it.
+  </div>
+
+  <p><code>install-mac.sh</code> drives the whole flow:</p>
+
+  <pre>./install-mac.sh</pre>
+
+  <p>It runs <code>xcodebuild -configuration Release
+  -derivedDataPath ./build</code>, quits any running instance, clears
+  the SwiftUI-autosaved window frame (so the new
+  <code>.defaultSize</code> takes effect instead of whatever the user
+  last dragged the old build to), replaces
+  <code>/Applications/bttfclock.app</code>, and launches it. The
+  per-project <code>-derivedDataPath</code> keeps Release artefacts
+  out of Xcode's global DerivedData.</p>
+
+  <h2>Launch-argument testability</h2>
+
+  <p>Three flags, parsed once in <code>ContentView.onAppear</code>,
+  override persisted state so every visual variation is reachable from
+  the CLI — no AppleScript required:</p>
+
+  <pre>xcrun simctl launch "iPhone 16" com.pwilliams.bttfclock \
+    -frozendate "1985-10-26T01:21:00-07:00" \
+    -cities london,new_york,hong_kong</pre>
+
+  <p>With a frozen date the <code>ClockViewModel</code>'s
+  <code>Timer</code> never starts, so every screenshot is byte-stable.
+  The colon keeps ticking regardless because its
+  <code>TimelineView</code> uses the live system <code>Date</code>, not
+  the view model's frozen instant. 35 Swift Testing cases cover
+  segment bitmasks, timezone math, persistence round-trips, colon-tick
+  timing, and the launch-arg plumbing.</p>
+
+  <h2>Icons</h2>
+
+  <p>A ~100-line Python/Pillow script renders three 1024×1024 variants
+  — standard, dark, tinted — drawing the brushed metal background,
+  three colour-gelled windows, and four corner rivets. The
+  <code>Contents.json</code> uses <code>luminosity</code> appearance
+  variants to hook into iOS 18's tinted home-screen mode.</p>
+
+  <h2>What's next</h2>
+
+  <p>Every drawing primitive is resolution-independent, so the same
+  view model and segment renderer should port cleanly to watchOS —
+  the three rows may need to stack more tightly on a 45mm face, but
+  the visual identity carries across. That's the next phase.</p>
+
+  <footer>
+    <p>Generated from the bttfclock project · pcwilliams</p>
+  </footer>
+</div>
+</body>
+</html>
