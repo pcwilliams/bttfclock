@@ -75,7 +75,13 @@ cd bttfclock
 # the new build opens at its current .defaultSize.
 ./install-mac.sh
 
-# Build for iPhone (simulator-safe, no signing)
+# Quickest way to get it on a paired iPhone: build (signed),
+# install, launch — forwards any extra args to the app's launch
+# arguments.
+./run_phone.sh                                          # plain launch
+./run_phone.sh -frozendate 1985-10-26T01:21:00-07:00    # pin the clock
+
+# Build for iPhone simulator (no signing)
 xcodebuild -project bttfclock.xcodeproj -scheme bttfclock \
   -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
 
@@ -88,6 +94,8 @@ Open `bttfclock.xcodeproj` in Xcode to run on a real iPhone — set your
 own development team in Signing & Capabilities. In Xcode's scheme
 destination selector, pick **My Mac** to run the native Mac build, or
 use `install-mac.sh` to drop a Release build into `/Applications`.
+`run_phone.sh` reads `APPLE_TEAM_ID`, `IPHONE_UDID`, and `IPHONE_BUILD_ID`
+from `~/appledev/setupenv.sh` to handle code-signing automatically.
 
 On macOS, open settings with **⌘,** (there's no on-screen gear button —
 the clock fills the window).

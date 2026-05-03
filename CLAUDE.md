@@ -250,6 +250,16 @@ The simulator does NOT replicate everything. Always test on device for:
 - **@AppStorage** for persisting UI preferences across launches
 - **`.contentShape(Rectangle())`** for full-row tap targets
 
+### GPU rendering — 3D surfaces, terrain, waterfalls, landscapes
+
+For any feature that renders a 2D value field as a lit, animated 3D surface (frequency × time, day × hour, X × Y × any-Z, ridgelines, terrain), use the **`3dsurface`** skill. It captures the canonical Metal pipeline, mesh, camera math, lighting, smoothing, and animation patterns extracted from HeartMap and Spectrum — including the non-obvious decisions (fixed colour scales, smoothing-decoupled-from-colour, face normals, locked camera) that make a surface read as *stunning* rather than just correct.
+
+### Apple Health / HealthKit
+
+For any feature that reads heart rate, steps, workouts, sleep, or other Apple Health data, use the **`healthkit`** skill. It captures the actor-based service shape, authorization (single combined prompt; read perms aren't queryable), the optimized fetch patterns (per-month queries, server-side bucketing via `HKStatisticsCollectionQuery + .cumulativeSum`, parallel `async let`), the three-phase load (disk-cache seed → current-month refresh → background stream), the empty-result fallback to demo data, infinity-safe JSON disk caching, workout activity type → label/symbol mapping, and entitlements/provisioning gotchas (wildcard profiles can't carry HealthKit).
+
+For *clinical interpretation* of that data — fitness scores, resting heart rate calculations, AHA active-minute zones, age-adjusted scoring, evidence-based step thresholds — use the **`health`** skill. It's platform-agnostic (useful in web dashboards too) and always carries an explicit "not medical advice" disclaimer.
+
 ## App Icons
 
 Generated programmatically using **Python/Pillow** — not designed in a graphics tool. Three variants at 1024x1024:
@@ -454,12 +464,84 @@ A step-by-step record of how the app was built. Use collaborative prompt tone �
 - Plain Markdown in `.md` files. Images use `![alt](src)` syntax, not `<img>` tags
 - HTML docs use a shared dark theme with CSS custom properties and Mermaid.js loaded from CDN
 
+## Multi-platform iOS+macOS apps
+
+A single Xcode target can build for both `iphoneos`/`iphonesimulator` and `macosx`. ~99% of the code is platform-neutral; the differences are funneled through a small set of typealiases plus a handful of narrowly-scoped `#if` blocks. Pattern proven on a SceneKit solar-system app — see SolarSystem's `Extensions/Platform.swift`.
+
+### Platform.swift typealiases
+
+In `Extensions/Platform.swift`:
+
+| Typealias | iOS | macOS |
+|-----------|-----|-------|
+| `PlatformColor` | `UIColor` | `NSColor` |
+| `PlatformImage` | `UIImage` | `NSImage` |
+| `PlatformView` | `UIView` | `NSView` |
+| `PlatformViewRepresentable` | `UIViewRepresentable` | `NSViewRepresentable` |
+
+Plus `makePlatformImage(cgImage:size:)` and `cgImage(from:)` helpers for `UIImage`↔`NSImage` bridging where construction differs.
+
+**Rule**: outside `Platform.swift` (and a handful of files that genuinely need `#if`), never write `UIColor`/`UIImage`/UIKit-typed names directly. Use the `Platform…` aliases and most code stays one-line.
+
+The places that *do* still need `#if canImport(UIKit)` in practice:
+- Gesture recognisers (UIKit and AppKit APIs diverge meaningfully)
+- The frame-tick loop (different display-link constructors)
+- SwiftUI modifiers that exist on only one platform (`.statusBarHidden`, `navigationBarTitleDisplayMode`, `topBarTrailing`, etc.)
+
+### Frame-tick loop
+
+Use `CADisplayLink` on both platforms — just constructed differently:
+
+- **iOS**: `CADisplayLink(target: self, selector: ...)` on the main run loop, display-synchronised 30–60 Hz.
+- **macOS 14+**: `scnView.displayLink(target: self, selector: ...)` — the NSView-bound form. Binds to whichever display the window is on so ticks stay synced to that screen's VBlank.
+
+**Don't try `Timer.scheduledTimer` on macOS as a substitute.** It produces visible ~1-per-second stutters because Timer's cadence drifts in and out of phase with the 60 Hz refresh. Only the real display link is reliable.
+
+Because the macOS display link needs an SCNView/NSView to bind to, the start-animation request can arrive before the view is connected (SwiftUI's `onAppear` can fire before `makeNSView` completes). Park the request in a `pendingAnimationStart` flag and re-issue once the view's `didSet` runs.
+
+### Gesture conventions (macOS vs iOS)
+
+The AppKit Y axis is inverted relative to UIKit. macOS pan/orbit handlers must flip `dy` (e.g. `lastPoint.y - translation.y`) so "drag up = look up" stays consistent with iOS. All actual camera/transform maths stays shared between platforms — only the input plumbing differs.
+
+Typical macOS gesture map for a 3D scene:
+
+| Input | Action | Implementation |
+|-------|--------|----------------|
+| Left-mouse drag | Pan target | `NSPanGestureRecognizer` with `buttonMask = 0x1` |
+| Right-mouse drag | Orbit | `NSPanGestureRecognizer` with `buttonMask = 0x2` |
+| Trackpad pinch | Zoom | `NSMagnificationGestureRecognizer` |
+| Scroll wheel / 2-finger scroll | Zoom | Subclass overriding `scrollWheel(with:)` |
+| Single click | Select | `NSClickGestureRecognizer` (`numberOfClicks = 1`) |
+| Double click | Reset | `NSClickGestureRecognizer` (`numberOfClicks = 2`) |
+
+### SCNVector3 component types
+
+`SCNVector3.x/y/z` is `Float` on iOS but `CGFloat` on macOS. Two helpers in `SCNVector3+Math.swift` (or equivalent) hide the gap:
+
+- `SCNVector3(_ x: Double, _ y: Double, _ z: Double)` — build a vector from `Double` components.
+- `SCNVector3.adding(_ dx: Double, _ dy: Double, _ dz: Double) -> SCNVector3` — offset by `Double` deltas, returning a new vector.
+
+Use these wherever you previously wrote `SCNVector3(x, y, z)` with `Float` arithmetic — one-line call sites compile on both platforms.
+
+### Launching with arguments (Debug from DerivedData)
+
+Same `ProcessInfo.processInfo.arguments` parsing pattern as iOS, but the launcher is different:
+
+```bash
+APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData/<Project>-*/Build/Products/Debug/<Project>.app -maxdepth 0)
+open -n "$APP_PATH" --args -mode someMode -timeScale 5000
+```
+
+`open -n` launches a fresh instance each time (`-n` for "new"); drop it to reuse the running copy. The `--args` flag feeds everything after it into `ProcessInfo.processInfo.arguments`. For Release-built apps installed to `/Applications`, just point `open -n` at the bundle there.
+
 ## Common Gotchas
 
 - **Keychain: always delete before add** to avoid `errSecDuplicateItem`
 - **SwiftUI `.refreshable` cancels structured concurrency** — wrap network calls in an unstructured `Task`
 - **Sandbox entitlements:** macOS apps are sandboxed by default — ensure `com.apple.security.files.user-selected.read-write` or similar entitlements are set for file access
 - **MusicKit / AppleScript:** `MusicKit` is the modern API for Apple Music access; `AppleScript` bridging via `NSAppleScript` is a fallback for operations MusicKit doesn't cover
+- **`Timer.scheduledTimer` is not a frame clock** — it drifts in and out of phase with 60 Hz refresh, producing ~1 Hz stutters. Use `scnView.displayLink(target:selector:)` (macOS 14+) for any per-frame work bound to a SceneKit view; for non-SceneKit frame work, use `CVDisplayLink` directly.
+- **AppKit Y axis is inverted vs UIKit** — flip `dy` in any pan / drag handler shared with iOS code, otherwise the "drag up = look up" convention reverses on macOS.
 
 ---
 
@@ -475,7 +557,7 @@ wall-clock seconds.
 ## Owner
 
 - **Developer:** pwilliams (GitHub: pcwilliams)
-- **Development Team:** L7GB763YG3
+- **Development Team:** (your Apple Developer Team ID)
 - **Device:** iPhone 16 Pro
 - **Bundle ID:** `com.pwilliams.bttfclock`
 - **Display name:** Time Circuits
@@ -696,6 +778,7 @@ bttfclock/
 ├── bttfclock.xcodeproj/project.pbxproj
 ├── generate_icons.py                 # Pillow icon script
 ├── install-mac.sh                    # build Release + install in /Applications + launch
+├── run_phone.sh                      # iPhone build (signed) → install → launch
 ├── CLAUDE.md                         # this file
 ├── README.md
 ├── architecture.html                 # visual design doc with SVG
@@ -794,15 +877,33 @@ xcodebuild -project bttfclock.xcodeproj -scheme bttfclock \
 
 ### Deploy to iPhone
 
+Use the bundled `run_phone.sh` for the build → install → launch flow:
+
+```bash
+./run_phone.sh                              # plain launch
+./run_phone.sh -frozendate 1985-10-26T01:21:00-07:00   # forward launch-args
+./run_phone.sh -cities london,tokyo,sydney  # any launch-arg works
+```
+
+It reads `APPLE_TEAM_ID` / `IPHONE_UDID` / `IPHONE_BUILD_ID` from
+`~/appledev/setupenv.sh` (with the fail-loud `${VAR:?}` guard pattern), builds
+for the device with `-destination "id=$IPHONE_BUILD_ID" -allowProvisioningUpdates
+DEVELOPMENT_TEAM=$APPLE_TEAM_ID`, installs via `devicectl`, and launches with
+any trailing arguments forwarded.
+
+If you need to invoke `xcodebuild` manually, use this exact form — the bare
+`-destination "platform=iOS,name=…"` form silently produces an *unsigned*
+`.app` on this project, which then fails to install with `No code signature
+found`:
+
 ```bash
 xcodebuild -project bttfclock.xcodeproj -scheme bttfclock \
-  -destination "platform=iOS,name=Paul's iPhone 16 Pro" \
-  -allowProvisioningUpdates build
+  -destination "id=$IPHONE_BUILD_ID" -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" build
 
-APP="<derived-data>/Debug-iphoneos/bttfclock.app"
-xcrun devicectl device install app --device 970899A3-153F-5EC2-834F-BAFFCDF2560B "$APP"
-xcrun devicectl device process launch \
-  --device 970899A3-153F-5EC2-834F-BAFFCDF2560B com.pwilliams.bttfclock
+APP=$(find ~/Library/Developer/Xcode/DerivedData/bttfclock-*/Build/Products/Debug-iphoneos/bttfclock.app -maxdepth 0)
+xcrun devicectl device install app --device "$IPHONE_UDID" "$APP"
+xcrun devicectl device process launch --device "$IPHONE_UDID" com.pwilliams.bttfclock
 ```
 
 ### Run on macOS
